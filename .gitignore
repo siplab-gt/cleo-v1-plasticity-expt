@@ -1,3 +1,4 @@
 # typical python stuff
 *.egg-info
 *.pyc
+Spiking_model*/*

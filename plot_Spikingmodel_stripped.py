@@ -5,6 +5,7 @@ Created on Tue Mar 14 17:46:19 2017
 
 @author: kwilmes
 """
+import sys
 import matplotlib.pyplot as plt
 from matplotlib import gridspec
 from matplotlib import rcParams
@@ -498,8 +499,8 @@ def plot_xcorr2(pyr1,pyr2,sst,pv, condition=None):
     plt.savefig('%s/%s/%s/xcorr_%s.eps'%(savepath, dataname, run_no, condition))
 
 
-if __name__ == "__main__":
-    dataname = 'Spiking_model_PIcontrol_PV_rt_tHz_625_updated'
+def plot_spiking_model(dataname):
+    # dataname = 'Spiking_model_PIcontrol_PV_rt_tHz_625_updated'
     savepath = './'
     Wrecafterreward = False
     Wrecafterwarmup = False
@@ -1668,4 +1669,5 @@ if __name__ == "__main__":
     plot_grandavgtuningcurves(PVtuning_initial,PVtuning_final, 1, save='%s/%s/%s'%(savepath, dataname, run_no),name = 'PV')
 
     
-
+if __name__ == '__main__':
+    plot_spiking_model(sys.argv[1])

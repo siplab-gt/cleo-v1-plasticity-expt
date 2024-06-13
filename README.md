@@ -16,12 +16,15 @@ mamba activate wcm
 *(wcm refers to Wilmes-Clopath Model)*
 
 ## Usage
-To replicate results in the paper:
-1. Run the original Wilmes-Clopath model for comparison
-    ```bash
-    python run_code.py
-    ```
-2. Run the simulation for all target firing rates
+To replicate results in the paper, do all the following (all from repository root as the working directory):
+
+1. Run the simulation for all target firing rates and no stimulation:
     ```bash
     python run_cleo_sweep.py
     ```
+2. Generate composite figures
+    ```bash
+    python plot_parameter_sweep.py
+    ```
+
+*This code has not been thoroughly tested, so please report any issues you encounter.*

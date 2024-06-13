@@ -21,7 +21,6 @@ from sacred import Experiment
 ex = Experiment("L23_network") 
 
 from analyse_experiment import *
-from plot_Spikingmodel import *
 from cleo import *
 from cleo.ioproc import (LatencyIOProcessor,
     FiringRateEstimator,
@@ -198,6 +197,7 @@ def run_network(params,target_firing_rate,_run):
 
     # get parameters
     p = Struct(**params)
+    use_opto = target_firing_rate != -1
 
     # simulation
     total_simtime = p.nonplasticwarmup_simtime + p.warmup_simtime + p.reward_simtime + p.noreward_simtime + p.noSSTPV_simtime + p.after_simtime
@@ -733,8 +733,8 @@ def run_network(params,target_firing_rate,_run):
         light_model=fiber473nm(),
         name="fiber",
     )
-
-    sim.inject(opsin, PV, Iopto_var_name='Iopto')
+    if use_opto:
+        sim.inject(opsin, PV, Iopto_var_name='Iopto')
     sim.inject(fiber, PV)
     sim.inject(probe, inh_neurons)
 
@@ -803,21 +803,18 @@ def run_network(params,target_firing_rate,_run):
                 for i in range(int(self.time_constant/self.delta)):
                     firing_rate=firing_rate+1000*alpha*(1-alpha)**i*spike_vals[sh_len-1-i]
             firing_rate_history.append(firing_rate)
-            if sample_time_ms<start_time or sample_time_ms>end_time:
-            #if True:
-                opto_history.append(0)
-                return ({fiber.name: 0}, sample_time_ms)
+            if not use_opto or sample_time_ms<start_time or sample_time_ms>end_time:
+                opto_intensity = 0
             else:
                 opto_intensity, time_ms = self.pi_controller.process(
                     firing_rate, sample_time_ms, sample_time_ms=sample_time_ms
                 )
-                #opto_intensity=0
-                time_ms=sample_time_ms
                 if opto_intensity < 0 :  # limit to positive current
                     opto_intensity = 0
             # time_ms at the end reflects the delays added by each block
-                opto_history.append(opto_intensity)
-                return ({fiber.name:opto_intensity}, time_ms)
+
+            opto_history.append(opto_intensity)
+            return ({fiber.name:opto_intensity}, sample_time_ms)
 
 
     sim.set_io_processor(FeedbackOpto())

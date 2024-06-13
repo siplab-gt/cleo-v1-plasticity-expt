@@ -23,7 +23,7 @@ if __name__ == "__main__":
     #fig, ((ax1),(ax2))=plt.subplots(2,1)
     fig, ((ax1),(ax2))=plt.subplots(2,1)
     for i in range(8):
-        dataname.append('Spiking_model_PIcontrol_PV_rt_tHz_{}_updated'.format(525+i*25))
+        dataname.append('Spiking_model_PIcontrol_PV_rt_tHz_{}'.format(525+i*25))
         reader.append(ExperimentReader('./%s'%dataname[i]))
         savepath = './'
         all_datas.append(reader[i].try_loading_artifacts('1'))
@@ -51,7 +51,7 @@ if __name__ == "__main__":
         
         #ax3.errorbar(firing_rate_mean, opto_intensity_sum, xerr=firing_rate_std,marker='*', capsize=10,color=cmaps.viridis(0))
     #Add plotting of results with no opto stimulation    
-    dataname_no_opto='Spiking_model_updated_cleo_test'
+    dataname_no_opto='Spiking_model'
     reader_no_opto=ExperimentReader('./%s'%dataname_no_opto)
     data_no_opto=reader_no_opto.try_loading_artifacts('1')
     result_no_opto=data_no_opto['results.pkl']
@@ -63,18 +63,18 @@ if __name__ == "__main__":
     #ax3.plot(500,0,marker='*',color='k')
 
 
-    dataname_open_loop='Spiking_model_open_loop_PV_pt75'
-    reader_open_loop=ExperimentReader('./%s'%dataname_open_loop)
-    data_open_loop=reader_open_loop.try_loading_artifacts('1')
-    result_open_loop=data_open_loop['results.pkl']
+    # dataname_open_loop='Spiking_model_open_loop_PV_pt75'
+    # reader_open_loop=ExperimentReader('./%s'%dataname_open_loop)
+    # data_open_loop=reader_open_loop.try_loading_artifacts('1')
+    # result_open_loop=data_open_loop['results.pkl']
     
-    firing_rates_open_loop=result_open_loop['firing_rates'][:]
-    est1openloop, sd1openloop=findendweights((result_open_loop['PYR0toothers'][:,-1])/nS)
-    SOMPV_w_open_loop=(result_open_loop['SOMPV_w'][:])
-    est2openloop,sd2openloop=findendweights(SOMPV_w_open_loop[:3600,-1]/nS)
-    opto_intensity_sum=.75*(67900-43400)/1000
-    firing_rate_mean_open_loop=np.mean(np.squeeze(firing_rates_open_loop[43400:67900]))
-    firing_rate_std_open_loop=np.std(np.squeeze(firing_rates_open_loop[43400:67900]))
+    # firing_rates_open_loop=result_open_loop['firing_rates'][:]
+    # est1openloop, sd1openloop=findendweights((result_open_loop['PYR0toothers'][:,-1])/nS)
+    # SOMPV_w_open_loop=(result_open_loop['SOMPV_w'][:])
+    # est2openloop,sd2openloop=findendweights(SOMPV_w_open_loop[:3600,-1]/nS)
+    # opto_intensity_sum=.75*(67900-43400)/1000
+    # firing_rate_mean_open_loop=np.mean(np.squeeze(firing_rates_open_loop[43400:67900]))
+    # firing_rate_std_open_loop=np.std(np.squeeze(firing_rates_open_loop[43400:67900]))
 
 
     spike_values=result_no_opto['spike_values'][:]
@@ -103,8 +103,8 @@ if __name__ == "__main__":
     #ax3.set_ylim(-1,30)
     fig.set_figheight(10)
     fig.set_figwidth(6)
-    plt.savefig('%s/WCM_parametersweep_cleo_updated_v1.png'%(savepath), format='png', transparent=False)
-    plt.savefig('%s/WCM_parametersweep_cleo_updated_v1.pdf'%(savepath), format='pdf', transparent=False)
+    plt.savefig('%s/WCM_parametersweep_cleo.png'%(savepath), transparent=False)
+    plt.savefig('%s/WCM_parametersweep_cleo.pdf'%(savepath), transparent=False)
 
     fig2, ((ax21))=plt.subplots(1,1)
     for i in range(8):
@@ -139,5 +139,5 @@ if __name__ == "__main__":
     ax21.set_ylabel('Detected Firing Rate (Detected Spikes/s)')
     fig2.set_figheight((6)*(ax21ymax-ax21ymin)/(ax21xmax-ax21xmin))
     fig2.set_figwidth(6)
-    plt.savefig('%s/WCM_parametersweep_cleo_updated_firing_rate_v1.png'%(savepath), format='png', transparent=False)
-    plt.savefig('%s/WCM_parametersweep_cleo_updated_firing_rate_v1.pdf'%(savepath), format='pdf', transparent=False)
+    plt.savefig('%s/WCM_parametersweep_cleo.png'%(savepath), transparent=False)
+    plt.savefig('%s/WCM_parametersweep_cleo.pdf'%(savepath), transparent=False)

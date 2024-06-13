@@ -1,3 +1,4 @@
+import sys
 import matplotlib.pyplot as plt
 from matplotlib import gridspec
 from matplotlib import rcParams
@@ -6,8 +7,7 @@ import matplotlib.cm as cmaps
 from analyse_experiment import *
 import numpy as np
 
-if __name__ == "__main__":
-    dataname = 'Spiking_model_updated_cleo_test'
+def plot_essentials(dataname):
     savepath = './'
     reader = ExperimentReader('./%s'%dataname)
     # load all runs at once
@@ -213,3 +213,5 @@ if __name__ == "__main__":
     plt.savefig('%s/%s/%s/recorded_firing_rate_recalculated_10ms.pdf'%(savepath,dataname,run_no), bbox_inches='tight',format='pdf', transparent=True)  
 
 
+if __name__ == '__main__':
+    plot_essentials(sys.argv[1])
