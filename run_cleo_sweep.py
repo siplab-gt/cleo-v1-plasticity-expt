@@ -1,11 +1,12 @@
 import multiprocessing
+
 from sacred.observers import FileStorageObserver
 
 
 def run_in_thread(firing_rate):
-    from Spiking_model_cleo import ex
-    from plot_Spikingmodel_stripped import plot_spiking_model
     from plot_essentials import plot_essentials
+    from plot_Spikingmodel_stripped import plot_spiking_model
+    from Spiking_model_cleo import ex
 
     print("Running with target firing rate:", firing_rate)
     if firing_rate != -1:
@@ -13,7 +14,7 @@ def run_in_thread(firing_rate):
     else:
         dataname = "Spiking_model"
 
-    ex.observers.append(FileStorageObserver.create(dataname))
+    ex.observers = [FileStorageObserver.create(dataname)]
     ex.run("run_network", config_updates={"target_firing_rate": firing_rate})
     plot_spiking_model(dataname)
     plot_essentials(dataname)
@@ -31,5 +32,7 @@ firing_rates = [
     700,
 ]
 n_threads = len(firing_rates)
-pool = multiprocessing.Pool(n_threads)
-pool.map(run_in_thread, firing_rates)
+
+if __name__ == '__main__':
+    pool = multiprocessing.Pool(n_threads)
+    pool.map(run_in_thread, firing_rates)

@@ -1,0 +1,37 @@
+version: '3'
+
+vars:
+  FIRING_RATES: [-1, 525, 550, 575, 600, 625, 650, 675, 700]
+
+tasks:
+  default:
+    desc: Run all experiments in parallel (skipping completed)
+    cmds:
+      - task: sweep
+
+  sweep:
+    desc: Run all firing rates in parallel
+    deps: [{task: run, vars: {FIRING_RATE: '{{.ITEM}}'}}]
+    vars:
+      FIRING_RATES: '{{.FIRING_RATES}}'
+    parallel: true
+    for:
+      var: ITEM
+      in: '{{.FIRING_RATES}}'
+
+  run:
+    desc: Run a single experiment for a firing rate
+    vars:
+      FIRING_RATE: '{{.FIRING_RATE}}'
+      OUTDIR: |
+        {{- if eq .FIRING_RATE "-1" -}}
+        Spiking_model
+        {{- else -}}
+        Spiking_model_PIcontrol_PV_rt_tHz_{{.FIRING_RATE}}
+        {{- end -}}
+    generates:
+      - "{{.OUTDIR}}"
+    cmds:
+      - |
+        echo "Running for firing rate {{.FIRING_RATE}}"
+        python run_single_ex.py {{.FIRING_RATE}}
