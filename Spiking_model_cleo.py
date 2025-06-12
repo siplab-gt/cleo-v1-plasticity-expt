@@ -83,9 +83,6 @@ def calc_impact(con_REC):
 # function that defines parameters of the model:
 @ex.config
 def config():
-
-    
-    
     # KAJ: since sacred has a problem serializing Quantities, we write units into names 
     # with trailing underscores and get them back out when loading config
     params = {
@@ -196,7 +193,6 @@ def config():
         'relbound' : .1, 	# maximum synaptic weight bound relative to initial weight
 
         'restplastic' : False, 	# if True all connections are plastic
-        'dt_ms_' : 0.1, 	# simulation time step in ms
     }
     target_firing_rate = 625
     codegen_target = 'cython'
@@ -210,7 +206,7 @@ def run_network(params,target_firing_rate,codegen_target,_run):
     p = Struct(**params)
     use_opto = target_firing_rate != -1
     b2.prefs.codegen.target = codegen_target
-    b2.defaultclock.dt = p.dt
+    b2.defaultclock.dt = p.timestep
 
     # simulation
     total_simtime = p.nonplasticwarmup_simtime + p.warmup_simtime + p.reward_simtime + p.noreward_simtime + p.noSSTPV_simtime + p.after_simtime
@@ -700,7 +696,6 @@ def run_network(params,target_firing_rate,codegen_target,_run):
     
 
     # run without plasticity
-    defaultclock.dt = p.timestep
 
     con_ff_td.active = False
     TD.active = False  

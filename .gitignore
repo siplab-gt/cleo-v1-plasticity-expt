@@ -1,4 +1,8 @@
 # typical python stuff
 *.egg-info
 *.pyc
+results/*
 Spiking_model*/*
+.vscode/
+.snakemake/
+.task/*

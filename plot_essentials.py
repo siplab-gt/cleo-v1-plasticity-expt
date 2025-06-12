@@ -1,41 +1,42 @@
 import sys
-import matplotlib.pyplot as plt
-from matplotlib import gridspec
-from matplotlib import rcParams
-from scipy import stats
+
 import matplotlib.cm as cmaps
-from analyse_experiment import *
+import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib import gridspec, rcParams
+from scipy import stats
+
+from analyse_experiment import *
+from Spiking_model_cleo import Struct
+
 
 def plot_essentials(dataname):
     savepath = './'
     reader = ExperimentReader('./%s'%dataname)
     # load all runs at once
     runs = reader.get_all_experiment_runs()
-    run_nos = np.arange(1,2).astype(str) # TD removed, BCM type PYR-VIP 
-    no_stimuli = runs[run_nos[0]]['config']['params']['N4']
-    N_pyr = runs[run_nos[0]]['config']['params']['NPYR']
+    # run_nos = np.arange(1,2).astype(str) # TD removed, BCM type PYR-VIP 
+    run_nos = [reader.get_latest_exp_id]
+    p = Struct(**runs[run_nos[0]]['config']['params'])
+    no_stimuli = p.N4
+    N_pyr = p.NPYR
     N_pop = 4
-    N_sst = runs[run_nos[0]]['config']['params']['NSOM']
-    N_pv = runs[run_nos[0]]['config']['params']['NPV']
-    N_vip = runs[run_nos[0]]['config']['params']['NVIP']
-    seed = runs[run_nos[0]]['config']['params']['seed']
-    nonplasticwarmup = runs[run_nos[0]]['config']['params']['nonplasticwarmup_simtime']['py/reduce'][1]['py/tuple'][0]['values']
-    plasticwarmup = runs[run_nos[0]]['config']['params']['warmup_simtime']['py/reduce'][1]['py/tuple'][0]['values']
-    rewardsimtime = runs[run_nos[0]]['config']['params']['reward_simtime']['py/reduce'][1]['py/tuple'][0]['values']
-    norewardsimtime = runs[run_nos[0]]['config']['params']['noreward_simtime']['py/reduce'][1]['py/tuple'][0]['values']
-    noSSTPVsimtime = runs[run_nos[0]]['config']['params']['noSSTPV_simtime']['py/reduce'][1]['py/tuple'][0]['values']
-
-    gmax = runs[run_nos[0]]['config']['params']['gmax']['py/reduce'][1]['py/tuple'][0]['values']*siemens
-
-    input_time = runs[run_nos[0]]['config']['params']['input_time']['py/reduce'][1]['py/tuple'][0]['values']
+    N_sst = p.NSOM
+    N_pv = p.NPV
+    N_vip = p.NVIP
+    seed = p.seed
+    nonplasticwarmup = p.nonplasticwarmup_simtime / second
+    plasticwarmup = p.warmup_simtime / second
+    rewardsimtime = p.reward_simtime / second
+    norewardsimtime = p.noreward_simtime / second
+    noSSTPVsimtime = p.noSSTPV_simtime / second
+    gmax = p.gmax
+    input_time = p.input_time / second
     warmup = nonplasticwarmup + plasticwarmup
-    total = warmup+rewardsimtime+norewardsimtime+nonplasticwarmup+noSSTPVsimtime
+    total = warmup + rewardsimtime + norewardsimtime + nonplasticwarmup + noSSTPVsimtime
 
     t = np.arange(.0,135.3,.0001)*second
     
-
-
     
     dep_param = np.zeros(len(run_nos)) 
     dep_param2 = np.zeros(len(run_nos)) 
@@ -101,9 +102,8 @@ def plot_essentials(dataname):
         # get parameter
         config = runs[run_no]['config']
 
-        dep_param[i] = runs[run_no]['config']['params'][varied_param]#['py/reduce'][1]['py/tuple'][0]['values']
-        dep_param2[i] = runs[run_no]['config']['params'][varied_param2]['py/reduce'][1]['py/tuple'][0]['values']
-        
+        dep_param[i] = getattr(p, varied_param)
+        dep_param2[i] = getattr(p, varied_param2)
 
         results = all_data['results.pkl']
     spike_values=results['spike_values'][:]

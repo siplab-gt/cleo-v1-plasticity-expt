@@ -1,4 +1,5 @@
 import sys
+import time
 
 import brian2.only as b2
 import cleo
@@ -10,6 +11,9 @@ from matplotlib import gridspec, rcParams
 from scipy import stats
 
 import analyse_experiment
+from firing_rate_sd_to_hz import fr_sd_to_hz
+
+SAVEPATH = "results"
 
 
 def findendweights(data):
@@ -18,68 +22,52 @@ def findendweights(data):
     return est, sd
 
 
-def plot_weights():
-    dataname = []
-    readers = []
-    results = []
+def plot_weights(baseline_reader, baseline_results, ctrl_readers_results):
     SOMPV_w_list = []
-    all_datas = []
     PYR0toothers_list = []
     # fig, ((ax1),(ax2), (ax3))=plt.subplots(3,1)
     # fig, ((ax1),(ax2))=plt.subplots(2,1)
     fig, ((ax1), (ax2)) = plt.subplots(2, 1)
-    opto_fig, opto_ax = plt.subplots()
-    for i in range(8):
-        dataname.append("Spiking_model_PIcontrol_PV_rt_tHz_{}".format(525 + i * 25))
-        readers.append(analyse_experiment.ExperimentReader("./%s" % dataname[i]))
-        savepath = "./"
-        all_datas.append(readers[i].try_loading_artifacts(readers[i].get_latest_exp_id))
-        results.append(all_datas[i]["results.pkl"])
-        current_result = all_datas[i]["results.pkl"]
+    for reader, results in ctrl_readers_results:
         # SOMPV_w_list.append(results[i]['SOMPV_w'][:])
-        SOMPV_w = current_result["SOMPV_w"][:]
+        SOMPV_w = results["SOMPV_w"][:]
         # PYR0toothers_list.append(results[i]['PYR0toothers'][:])
-        firing_rates = current_result["firing_rates"][:]
+        firing_rates = results["firing_rates"][:]
         firing_rate_mean = np.mean(np.squeeze(firing_rates[43400:67900]))
         firing_rate_std = np.std(np.squeeze(firing_rates[43400:67900]))
+        config = reader.get_experiment_config(reader.get_latest_exp_id)
+        firing_rate_target = config["target_firing_rate"]
         (
             est1,
             sd1,
-        ) = findendweights((current_result["PYR0toothers"][:, -1]) / b2.nS)
+        ) = findendweights((results["PYR0toothers"][:, -1]) / b2.nS)
         ax1.errorbar(
-            i * 25 + 525, est1, yerr=sd1, marker="*", capsize=10, color=cmaps.viridis(0)
+            firing_rate_target,
+            est1,
+            yerr=sd1,
+            marker="*",
+            capsize=10,
+            color=cmaps.viridis(0),
         )
         est2, sd2 = findendweights(SOMPV_w[:3600, -1] / b2.nS)
         # ax2_2.errorbar(i*25+525,firing_rate_mean,yerr=firing_rate_std, marker='*', capsize=10,color=cmaps.viridis(0))
         ax2.errorbar(
-            i * 25 + 525, est2, yerr=sd2, marker="*", capsize=10, color=cmaps.viridis(0)
+            firing_rate_target,
+            est2,
+            yerr=sd2,
+            marker="*",
+            capsize=10,
+            color=cmaps.viridis(0),
         )
         # ax1.plot(i*25+525,est1,color='g',marker='x')
         # ax2.plot(i*25+525,est2,color='g',marker='x')
-        opto_intensity = current_result["opto_values"]
-        t_ms = current_result["spike_times"]
-        opto_ax.plot(t_ms, opto_intensity, label=525 + i * 25)
-        opto_ax.legend()
-        # opto_intensity_sum=0
-        # for t_index in range(len(opto_intensity)):
-        #     opto_intensity_sum=opto_intensity_sum+opto_intensity[t_index]
-        # opto_intensity_sum=opto_intensity_sum/1000
-        # ax3.plot(i*25+525,opto_intensity_sum,marker='*',color='b')
 
-        # ax3.errorbar(firing_rate_mean, opto_intensity_sum, xerr=firing_rate_std,marker='*', capsize=10,color=cmaps.viridis(0))
-    opto_fig.savefig(f"{savepath}/opto_intensity_vs_time.png")
     # Add plotting of results with no opto stimulation
-    dataname_no_opto = "Spiking_model"
-    reader_no_opto = analyse_experiment.ExperimentReader("./%s" % dataname_no_opto)
-    data_no_opto = reader_no_opto.try_loading_artifacts(
-        reader_no_opto.get_latest_exp_id
-    )
-    result_no_opto = data_no_opto["results.pkl"]
-    SOMPV_w = result_no_opto["SOMPV_w"][:]
+    SOMPV_w = baseline_results["SOMPV_w"][:]
     (
         est1,
         sd1,
-    ) = findendweights((result_no_opto["PYR0toothers"][:, -1]) / b2.nS)
+    ) = findendweights((baseline_results["PYR0toothers"][:, -1]) / b2.nS)
     # ax1.errorbar(500,est1,sd1,marker='*', capsize=10,color='k')
     est2, sd2 = findendweights(SOMPV_w[:3600, -1] / b2.nS)
     # ax2.errorbar(500,est2,sd2,marker='*', capsize=10,color='k')
@@ -98,8 +86,8 @@ def plot_weights():
     # firing_rate_mean_open_loop=np.mean(np.squeeze(firing_rates_open_loop[43400:67900]))
     # firing_rate_std_open_loop=np.std(np.squeeze(firing_rates_open_loop[43400:67900]))
 
-    spike_values = result_no_opto["spike_values"][:]
-    firing_rates_opto_off = result_no_opto["firing_rates"][:]
+    spike_values = baseline_results["spike_values"][:]
+    firing_rates_opto_off = baseline_results["firing_rates"][:]
     firing_rate_mean_no_opto = np.mean(np.squeeze(firing_rates_opto_off[43400:67900]))
     firing_rate_std_no_opto = np.std(np.squeeze(firing_rates_opto_off[43400:67900]))
     # ax1_2.errorbar(575,est1,sd1,marker='*', capsize=10,color='y')
@@ -124,22 +112,21 @@ def plot_weights():
     # ax3.set_ylim(-1,30)
     fig.set_figheight(2.5)
     fig.set_figwidth(1.7)
-    fig.savefig("%s/WCM_parametersweep_cleo.png" % (savepath))
-    fig.savefig("%s/WCM_parametersweep_cleo.svg" % (savepath))
+    fig.savefig(f"{SAVEPATH}/weights.png", transparent=False)
+    fig.savefig(f"{SAVEPATH}/weights.svg")
 
 
-def plot_firing():
-    fig2, ax = plt.subplots(figsize=(1.7, 2.5))
-    for i in range(8):
-        dataname = f"./Spiking_model_PIcontrol_PV_rt_tHz_{525 + i * 25}"
-        reader = analyse_experiment.ExperimentReader(dataname)
-        all_data = reader.try_loading_artifacts(reader.get_latest_exp_id)
-        current_result = all_data["results.pkl"]
-        firing_rates = current_result["firing_rates"][:]
+def plot_firing(baseline_reader, baseline_results, ctrl_readers_results):
+    fig, ax = plt.subplots(figsize=(1.7, 2.5))
+    for reader, results in ctrl_readers_results:
+        firing_rates = results["firing_rates"][:]
         firing_rate_mean = np.mean(np.squeeze(firing_rates[43400:67900]))
         firing_rate_std = np.std(np.squeeze(firing_rates[43400:67900]))
+        target = reader.get_experiment_config(reader.get_latest_exp_id)[
+            "target_firing_rate"
+        ]
         ax.errorbar(
-            i * 25 + 525,
+            target,
             firing_rate_mean,
             yerr=firing_rate_std,
             marker="*",
@@ -147,13 +134,7 @@ def plot_firing():
             color="black",
         )
 
-    dataname_no_opto = "Spiking_model"
-    reader_no_opto = analyse_experiment.ExperimentReader("./%s" % dataname_no_opto)
-    data_no_opto = reader_no_opto.try_loading_artifacts(
-        reader_no_opto.get_latest_exp_id
-    )
-    result_no_opto = data_no_opto["results.pkl"]
-    firing_rates = result_no_opto["firing_rates"][:]
+    firing_rates = baseline_results["firing_rates"][:]
     firing_rate_mean = np.mean(np.squeeze(firing_rates[43400:67900]))
     firing_rate_std = np.std(np.squeeze(firing_rates[43400:67900]))
 
@@ -164,39 +145,63 @@ def plot_firing():
 
     ax.set_xlabel("Target firing rate (Hz)")
     ax.set_ylabel("Achieved multi-unit firing rate (Hz)")
-    plt.savefig("WCM_firing.pdf")
-    plt.savefig("WCM_firing.svg")
+    fig.savefig(f"{SAVEPATH}/firing.png", transparent=False)
+    fig.savefig(f"{SAVEPATH}/firing.svg")
 
 
-def plot_trajectories():
-    datanames = ["Spiking_model"] + [
-        f"./Spiking_model_PIcontrol_PV_rt_tHz_{525 + i * 25}" for i in range(8)
-    ]
-    targets = [-1] + [525 + i * 25 for i in range(8)]
-    fig, axs = plt.subplots(2, 9, figsize=(10, 4), sharex=True, sharey='row')
-    for i, dataname in enumerate(datanames):
-        reader = analyse_experiment.ExperimentReader(dataname)
-        all_data = reader.try_loading_artifacts(reader.get_latest_exp_id)
-        current_result = all_data["results.pkl"]
+def plot_trajectories(baseline_reader, baseline_results, ctrl_readers_results):
+    readers_results = [(baseline_reader, baseline_results)] + ctrl_readers_results
+    n_cols = len(readers_results)
+    fig, axs = plt.subplots(2, n_cols, figsize=(n_cols * 1.3, 4), sharex=True, sharey="row")
+    for i, (reader, results) in enumerate(readers_results):
+        config = reader.get_experiment_config(reader.get_latest_exp_id)
+        target = config["target_firing_rate"]
         axs[0, i].plot(
-            np.array(current_result["spike_times"]) / 1000,
-            current_result["firing_rates"],
+            np.array(results["spike_times"]) / 1000,
+            results["firing_rates"],
         )
         axs[1, i].plot(
-            np.array(current_result["spike_times"]) / 1000,
-            current_result["opto_values"],
-            color='xkcd:sky blue'
+            np.array(results["spike_times"]) / 1000,
+            results["opto_values"],
+            color="xkcd:sky blue",
         )
-        axs[0, i].set(title=targets[i])
-        axs[1, i].set(xlabel='time (s)')
-    axs[0, 0].set(ylabel='firing rate (Hz)')
-    axs[1, 0].set(ylabel='opto intensity (mW/mm²)')
-    fig.savefig("WCM_trajectories.pdf")
-    fig.savefig("WCM_trajectories.png", transparent=False)
+        axs[0, i].set(title=target)
+        axs[1, i].set(xlabel="time (s)")
+    axs[0, 0].set(ylabel="firing rate (Hz)")
+    axs[1, 0].set(ylabel="opto intensity (mW/mm²)")
+    fig.savefig(f"{SAVEPATH}/trajectories.svg")
+    fig.savefig(f"{SAVEPATH}/trajectories.png", transparent=False)
+
+
+def load_data(baseline_folder, ctrl_folders):
+    ctrl_readers_results = []
+    for ctrl_folder in ctrl_folders:
+        reader = analyse_experiment.ExperimentReader(ctrl_folder)
+        data = reader.try_loading_artifacts(reader.get_latest_exp_id)
+        results = data["results.pkl"]
+        ctrl_readers_results.append((reader, results))
+        print(f"loaded {ctrl_folder}")
+
+    baseline_reader = analyse_experiment.ExperimentReader(baseline_folder)
+    data = baseline_reader.try_loading_artifacts(baseline_reader.get_latest_exp_id)
+    baseline_results = data["results.pkl"]
+    print(f"loaded {baseline_folder}")
+
+    return baseline_reader, baseline_results, ctrl_readers_results
+
 
 if __name__ == "__main__":
     cleo.utilities.style_plots_for_paper()
 
-    # plot_weights()
-    # plot_firing()
-    plot_trajectories()
+    firing_rates_sd = sys.argv[1]
+    frs_sd = firing_rates_sd.split(",")
+    ctrl_folders = [f"results/Spiking_model_PIcontrol_PV_rt_tSD_{fr}" for fr in frs_sd]
+    baseline_folder = "results/Spiking_model_baseline"
+
+    baseline_reader, baseline_results, ctrl_readers_results = load_data(
+        baseline_folder, ctrl_folders
+    )
+
+    plot_weights(baseline_reader, baseline_results, ctrl_readers_results)
+    plot_firing(baseline_reader, baseline_results, ctrl_readers_results)
+    plot_trajectories(baseline_reader, baseline_results, ctrl_readers_results)

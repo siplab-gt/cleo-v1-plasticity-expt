@@ -26,7 +26,10 @@ class ExperimentReader(object):
 
     @property
     def _files_in_rundir(self):
-        return glob.glob('{}/*'.format(self._run_dir))
+        items = glob.glob('{}/*'.format(self._run_dir))
+        # filter out files that are not directories
+        items = [item for item in items if os.path.isdir(item)]
+        return items
     
     def get_all_experiment_runs(self):
         # WARNING: this assumes that experiment do not start with _ 
