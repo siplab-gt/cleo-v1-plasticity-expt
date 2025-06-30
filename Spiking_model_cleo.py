@@ -1,40 +1,48 @@
-#!/usr/bin/env python2
-# -*- coding: utf-8 -*-
 """
 L2/3: PCs, PVs, SOMs and VIPs receive L4 bottom-up and top-down input
 
 Created on Mon Mar  6 14:12:15 2017
 
 @author: kwilmes
+
+Modifed by Nathanael Cruzado and Kyle Johnsen, 2022-2025
 """
 #import msilib
 import os
+import pickle
 import shutil
 from tempfile import mkdtemp
+
+import brian2.only as b2
+import cleo.coords
+import cleo.utilities
 import numpy as np
-import pickle
-
-
 from brian2 import *
 from brian2tools import *
 from sacred import Experiment
+
 ex = Experiment("L23_network") 
 
+import cleo
+
 from analyse_experiment import *
-from cleo import *
-from cleo.ioproc import (LatencyIOProcessor,
-    FiringRateEstimator,
-    ConstantDelay,
-    PIController,
-)
-from cleo.coords import assign_coords_rand_rect_prism
-from cleo.opto import *
-from cleo.ephys import Probe, SortedSpiking
+
 
 class Struct:
+    # KAJ: since sacred has a problem serializing Quantities, we write units into names and
+    # get them back out here when loading config
     def __init__(self, **entries):
-        self.__dict__.update(entries)
+        for k, v in entries.items():
+            if k[-1] == '_':
+                k_split = k.split('_')
+                k_to_store = '_'.join(k_split[:-2])
+                unit = getattr(b2, k_split[-2])
+                v_to_store = v * unit
+            else:
+                 k_to_store, v_to_store = k, v
+            self.__dict__[k_to_store] = v_to_store
         
+
 class TmpExpDir(object):
         """A context manager that creates and deletes temporary directories.
         """
@@ -77,21 +85,20 @@ def calc_impact(con_REC):
 # function that defines parameters of the model:
 @ex.config
 def config():
-
-    
-    
+    # KAJ: since sacred has a problem serializing Quantities, we write units into names 
+    # with trailing underscores and get them back out when loading config
     params = {
         # simulation parameters
         'plot': False, 				# enables plotting during the run
-        'seed' : 7472, 				# random seed       
-	'nonplasticwarmup_simtime' : 1.4*second,# no plasticity, to measure tuning
-        'warmup_simtime' : 42*second,# 42*second, 		# plasticity, no reward
-        'reward_simtime' : 24.5*second,# 24.5*second, 	# plasticity, with reward
-        'noreward_simtime': 45*second,# 45*second, 		# plasticity, without reward
-        'noSSTPV_simtime': 21*second,# 21*second, 		# plasticity, without reward 
+        'seed' : 1805, 				# random seed       
+        'nonplasticwarmup_simtime_second_' : 1.4,# no plasticity, to measure tuning
+        'warmup_simtime_second_' : 42,# 42*second, 		# plasticity, no reward
+        'reward_simtime_second_' : 24.5,# 24.5*second, 	# plasticity, with reward
+        'noreward_simtime_second_': 45,# 45*second, 		# plasticity, without reward
+        'noSSTPV_simtime_second_': 21,# 21*second, 		# plasticity, without reward 
 	# for Suppl. Figure, we killed SSTPV structure after 45s, therefore the no reward simtime is split up
-        'after_simtime' : 1.4*second, 		# no plasticity, to measure tuning
-        'timestep' : 0.1*ms,
+        'after_simtime_second_' : 1.4, 		# no plasticity, to measure tuning
+        'timestep_ms_' : 0.1,
     
         # number of neurons
         'NPYR' : 400,          	# Number of excitatory L23 PYR cells
@@ -102,24 +109,25 @@ def config():
         
         
         # time constants of synaptic kernels
-        'tau_ampa' : 5.0*ms,   	# Excitatory synaptic time constant
-        'tau_gaba' : 10.0*ms,  	# Inhibitory synaptic time constant
+        'tau_ampa_ms_' : 5.0,   	# Excitatory synaptic time constant
+        'tau_gaba_ms_' : 10.0,  	# Inhibitory synaptic time constant
         
         # L4 input
         'N4' : 4,  		# Number of L4 units
-        'L4_rate' : 4/(1*ms), 	# Firing rate of L4 units
-        'orientations' : np.array([0.785398163397, 1.57079632679, 2.35619449019, 0.0]), # Four orientations
-        'input_time' : 70*ms, 	# stim_time + gap_time, i.e. time between starts of two subsequent stimuli
-        'stim_time' : 50*ms, 	# duration of stimulus
+        'L4_rate_kHz_' : 4/(1), 	# Firing rate of L4 units
+        # KAJ: this numpy array breaks serialization used by sacred for some reason. also not used?
+        # 'orientations' : np.array([0.785398163397, 1.57079632679, 2.35619449019, 0.0]), # Four orientations
+        'input_time_ms_' : 70, 	# stim_time + gap_time, i.e. time between starts of two subsequent stimuli
+        'stim_time_ms_' : 50, 	# duration of stimulus
         
         # L23 neuron parameters
-        'gl' : 10.0*nsiemens,   # Leak conductance
-        'el' : -60*mV,          # Resting potential
-        'er' : -80*mV,          # Inhibitory reversal potential
-        'vt' : -50.*mV,         # Spiking threshold
-        'memc' : 200.0*pfarad,  # Membrane capacitance 
-        'sigma' : 2.0*mV, 	# sigma of Ornstein-Uhlenbeck noise
-        'tau_noise' : 5.0*ms, 	# tau of Ornstein-Uhlenbeck noise
+        'gl_nsiemens_' : 10.0,   # Leak conductance
+        'el_mV_' : -60,          # Resting potential
+        'er_mV_' : -80,          # Inhibitory reversal potential
+        'vt_mV_' : -50,         # Spiking threshold
+        'memc_pfarad_' : 200.0,  # Membrane capacitance 
+        'sigma_mV_' : 2.0, 	# sigma of Ornstein-Uhlenbeck noise
+        'tau_noise_ms_' : 5.0, 	# tau of Ornstein-Uhlenbeck noise
         
 	# Connectivity
 
@@ -151,53 +159,56 @@ def config():
         'p_VIP_VIP' : .125,
         'p_SOM_SOM' : .125,
 
-        'w_PYR_SOM' : 0.07*nS,
-        'w_PYR_VIP' : 0.07*nS,
-        'w_PYR_PV' : .12*nS,
-        'w_SOM_PYR' : 0.3*nS,
-        'w_SOM_VIP' : 0.42*nS,
-        'w_PV_PV' : 0.55*nS,
-        'w_VIP_SOM' : 0.195*nS,
-        'w_PV_SOM' : 0.08*nS,
-        'w_PV_PYR' : 0.55*nS,
-        'w_PV_VIP' : 0.12*nS,
-        'w_VIP_PYR' : .0675*nS,
-        'w_VIP_PV' : .0675*nS,
-        'w_VIP_VIP' : .0*nS,
-        'w_SOM_SOM' : .0675*nS,
-        'w_L4PYR' : .28*nS,
-        'w_FFPYR' : .13*nS,
-        'w_FFPV' : .01*nS,
-        'w_FFSOM' : .15*nS,
-        'w_TDVIP' : .2*nS,
+        'w_PYR_SOM_nS_' : 0.07,
+        'w_PYR_VIP_nS_' : 0.07,
+        'w_PYR_PV_nS_' : .12,
+        'w_SOM_PYR_nS_' : 0.3,
+        'w_SOM_VIP_nS_' : 0.42,
+        'w_PV_PV_nS_' : 0.55,
+        'w_VIP_SOM_nS_' : 0.195,
+        'w_PV_SOM_nS_' : 0.08,
+        'w_PV_PYR_nS_' : 0.55,
+        'w_PV_VIP_nS_' : 0.12,
+        'w_VIP_PYR_nS_' : .0675,
+        'w_VIP_PV_nS_' : .0675,
+        'w_VIP_VIP_nS_' : .0,
+        'w_SOM_SOM_nS_' : .0675,
+        'w_L4PYR_nS_' : .28,
+        'w_FFPYR_nS_' : .13,
+        'w_FFPV_nS_' : .01,
+        'w_FFSOM_nS_' : .15,
+        'w_TDVIP_nS_' : .2,
 
 	# gap junction parameters
-        'w_gap' : 0*nS, 	# sub-threshold coupling
-        'c_gap' : 13*pA, 	# spikelet current
-        'tau_spikelet' : 9.0*ms,# spikelet time constant
+        'w_gap_nS_' : 0, 	# sub-threshold coupling
+        'c_gap_pA_' : 13, 	# spikelet current
+        'tau_spikelet_ms_' : 9.0,# spikelet time constant
         
         
         # Plasticity parameters
-        'tau_stdp' : 20*ms, 	# STDP time constant at excitatory synapses
-        'tau_istdp' : 20*ms, 	# STDP time constant at inhibitory synapses
+        'tau_stdp_ms_' : 20, 	# STDP time constant at excitatory synapses
+        'tau_istdp_ms_' : 20, 	# STDP time constant at inhibitory synapses
         'dApre' : .005, 	# STDP amplitude
         'dApre_i' : 0.015, 	# Inhibitory STDP amplitude
-        'gmax' : .25*nS, 	# maximum synaptic weight for excitatory synapses       
-        'gmax_SSTPV': 1.0*nS, 	# maximum synaptic weight for SST-to-PV synapses
+        'gmax_nS_' : .25, 	# maximum synaptic weight for excitatory synapses       
+        'gmax_SSTPV_nS_' : 1.0, 	# maximum synaptic weight for SST-to-PV synapses
         'relbound' : .1, 	# maximum synaptic weight bound relative to initial weight
 
         'restplastic' : False, 	# if True all connections are plastic
     }
     target_firing_rate = 625
+    codegen_target = 'cython'
 
 
 
 @ex.command
-def run_network(params,target_firing_rate,_run):
+def run_network(params,target_firing_rate,codegen_target,_run):
 
     # get parameters
     p = Struct(**params)
     use_opto = target_firing_rate != -1
+    b2.prefs.codegen.target = codegen_target
+    b2.defaultclock.dt = p.timestep
 
     # simulation
     total_simtime = p.nonplasticwarmup_simtime + p.warmup_simtime + p.reward_simtime + p.noreward_simtime + p.noSSTPV_simtime + p.after_simtime
@@ -205,6 +216,7 @@ def run_network(params,target_firing_rate,_run):
     stim_time = p.stim_time    
     input_time = p.input_time
     seed(p.seed)
+    cleo.utilities.set_seed(p.seed)
     
     # neurons
     N4 = p.N4
@@ -296,9 +308,6 @@ def run_network(params,target_firing_rate,_run):
     dIspikelet/dt = -Ispikelet/tau_spikelet : amp
     dg_ampa/dt = -g_ampa/tau_ampa : siemens
     dg_gaba/dt = -g_gaba/tau_gaba : siemens
-    x : meter
-    y : meter
-    z : meter
     '''
     
     # Excitatory synapses
@@ -327,17 +336,46 @@ def run_network(params,target_firing_rate,_run):
  
 
     # define neurons
-    exc_neurons = NeuronGroup(p.NPYR, model=eqs_neurons, threshold='v > vt',
-                          reset='v=el', refractory=2*ms, method='euler')
+    exc_neurons = NeuronGroup(
+        p.NPYR,
+        model=eqs_neurons,
+        threshold="v > vt",
+        reset="v=el",
+        refractory=2 * ms,
+        method="euler",
+    )
 
-    inh_neurons = NeuronGroup(p.NSOM+p.NVIP+p.NPV, model=eqs_neurons, threshold='v > vt',
-                          reset='v=el', refractory=2*ms, method='euler')    
-    inh_neurons.x=np.random.uniform(-.2,.2, p.NSOM+p.NVIP+p.NPV)*mmeter
-    inh_neurons.y=np.random.uniform(-.2,.2, p.NSOM+p.NVIP+p.NPV)*mmeter
-    inh_neurons.z=np.random.uniform(.4,.6,p.NSOM+p.NVIP+p.NPV)*mmeter
-    exc_neurons.x=np.random.uniform(-.2,.2, p.NPYR)*mmeter
-    exc_neurons.y=np.random.uniform(-.2,.2, p.NPYR)*mmeter
-    exc_neurons.z=np.random.uniform(.4,.6, p.NPYR)*mmeter
+    inh_neurons = NeuronGroup(
+        p.NSOM + p.NVIP + p.NPV,
+        model=eqs_neurons,
+        threshold="v > vt",
+        reset="v=el",
+        refractory=2 * ms,
+        method="euler",
+    )
+    # get realistic size given density of L2/3
+    n_l23 = exc_neurons.N + inh_neurons.N
+    zlim_l23 = (100, 300) * um
+    thickness_l23 = zlim_l23[1] - zlim_l23[0]
+    density_mouse_v1 = 155426 / b2.mm3  # Herculano-Houzel 2013
+    l23_volume = n_l23 / density_mouse_v1
+    l23_area = l23_volume / thickness_l23
+    l23_radius = np.sqrt(l23_area / np.pi)
+    print('L2/3 radius:', l23_radius)
+
+    zlim_mm = zlim_l23 / b2.mm
+    cleo.coords.assign_coords_rand_cylinder(
+        exc_neurons,
+        [0, 0, zlim_mm[0]],
+        [0, 0, zlim_mm[1]],
+        l23_radius / b2.mm,
+    )
+    cleo.coords.assign_coords_rand_cylinder(
+        inh_neurons,
+        [0, 0, zlim_mm[0]],
+        [0, 0, zlim_mm[1]],
+        l23_radius / b2.mm,
+    )
 
     PYR = exc_neurons[:p.NPYR]
     SOM = inh_neurons[:p.NSOM]
@@ -687,7 +725,6 @@ def run_network(params,target_firing_rate,_run):
     
 
     # run without plasticity
-    defaultclock.dt = p.timestep
 
     con_ff_td.active = False
     TD.active = False  
@@ -715,28 +752,39 @@ def run_network(params,target_firing_rate,_run):
     #assign_coords_rand_rect_prism(inh_neurons, xlim=(-0.4, 0.4), ylim=(-0.4, 0.4), zlim=(0.4, 0.6))
 
     net=Network(collect())
+    n_synapses = 0
+    for obj in net.objects:
+        if isinstance(obj, Synapses):
+            n_synapses += obj.N
+    print('Total # synapses:', n_synapses)
 
-    mua = ephys.MultiUnitSpiking(
-        r_perfect_detection=25 * umeter,
-        r_half_detection=50 * umeter,
-        save_history=True,
-    )
+    # 105 μm matches 50% at 50 μm like before
+    spikes = cleo.ephys.MultiUnitActivity(name="spikes", r_noise_floor=105 * um)
+    # record in the middle of L2/3
+    probe = cleo.ephys.Probe(coords=[0, 0, np.average(zlim_mm)] * mm, signals=[spikes])
 
-    spikes = ephys.SortedSpiking(name='spikes', r_perfect_detection=25 * umeter, r_half_detection=50 * umeter, save_history=True)
-    probe = ephys.Probe(coords=[0, 0, .5] * mm)
-    probe.add_signals(mua, spikes)
-
-    sim=CLSimulator(net)
-    opsin = chr2_4s()
-    fiber = Light(
-        coords=(0, 0, .4) * mm,
-        light_model=fiber473nm(),
+    sim=cleo.CLSimulator(net)
+    opsin = cleo.opto.chr2_4s()
+    # stim at the top of L2/3
+    fiber = cleo.light.Light(
+        coords=(0, 0, zlim_mm[0]) * mm,
+        light_model=cleo.light.fiber473nm(),
         name="fiber",
     )
     if use_opto:
         sim.inject(opsin, PV, Iopto_var_name='Iopto')
     sim.inject(fiber, PV)
     sim.inject(probe, inh_neurons)
+
+    with TmpExpDir(base_dir="./") as exp_dir:
+        # lets create a filename for storing some data        
+        plot_file = os.path.join(exp_dir, "cleo_setup.png")
+        # add the result as an artifact, note that the name here is important
+        # as sacred otherwise will try to save to the oddly named tmp subdirectory we created
+        fig, ax = cleo.viz.plot(exc_neurons, inh_neurons, sim=sim)
+        fig.savefig(plot_file)
+        ex.add_artifact(plot_file, name=os.path.basename(plot_file))
+        print('saved Cleo setup plot')
 
 
     #def stimulus(time_ms):
@@ -752,8 +800,6 @@ def run_network(params,target_firing_rate,_run):
     firing_rate_history=[]
     start_time=(p.nonplasticwarmup_simtime+p.warmup_simtime)/second*1000
     end_time=(p.nonplasticwarmup_simtime+p.warmup_simtime+p.reward_simtime)/second*1000
-    def target_Hz(t_ms):
-        return target_firing_rate
 #    class ReactiveLoopOpto(LatencyIOProcessor):
 #        def __init__(self):
 #            super().__init__(sample_period_ms=1)
@@ -770,52 +816,51 @@ def run_network(params,target_firing_rate,_run):
             # return output dict and time
 #            return ({"opto": opto_intensity}, time_ms)
  
-    class FeedbackOpto(LatencyIOProcessor):
-        delta = 1  # ms
-        time_constant=1000
-        Kp=.005 #.016 for firing rates on the order of 200 hz, 
-        Ki=.003 #.008 for firing rates on the order of 200 hz,
-        def __init__(self):
-            super().__init__(sample_period_ms=self.delta, processing="parallel")
-
+    class FeedbackOpto(cleo.ioproc.LatencyIOProcessor):
+        time_constant = 1000 * ms
         # using hand-tuned gains that seem reasonable
-            self.pi_controller = PIController(
-                target_Hz,
-                Kp=self.Kp,
-                Ki=self.Ki,
-                sample_period_ms=self.delta,
-                delay=ConstantDelay(2),  # latency in ms
-                save_history=True,  # lets us plot later
-            )
+        Kp = 0.005  # .016 for firing rates on the order of 200 hz,
+        Ki = 0.003 / second # .008 for firing rates on the order of 200 hz,
+        delay = 2 * ms
 
-        def process(self, state_dict, sample_time_ms):
-            i, t, z_t = state_dict['Probe']['spikes']
+        def __init__(self):
+            super().__init__(sample_period=1 * ms, processing="parallel")
+            self.reset()
+
+        def process(self, state_dict, t_samp):
+            sample_time_ms = t_samp / ms
+            i, t, z_t = state_dict["Probe"]["spikes"]
             spike_t.append(sample_time_ms)
             spike_vals.append(np.size(i))
-            
-            # feed output and out_time through each block
-            sh_len=len(spike_vals)
-            firing_rate=0
-            alpha=1-2.72**(-self.delta/self.time_constant)
-            if sh_len<int(self.time_constant/self.delta):
-                firing_rate=spike_vals[sh_len-1]*1000
-            else:
-                for i in range(int(self.time_constant/self.delta)):
-                    firing_rate=firing_rate+1000*alpha*(1-alpha)**i*spike_vals[sh_len-1-i]
-            firing_rate_history.append(firing_rate)
-            if not use_opto or sample_time_ms<start_time or sample_time_ms>end_time:
+
+            prev_rate = firing_rate_history[-1] * Hz if len(firing_rate_history) > 0 else 0 * Hz
+            firing_rate = cleo.ioproc.exp_firing_rate_estimate(
+                spike_vals[-1], self.sample_period, prev_rate, self.time_constant
+            )
+            firing_rate_Hz = firing_rate / Hz
+            firing_rate_history.append(firing_rate_Hz)
+
+            if not use_opto or sample_time_ms < start_time or sample_time_ms > end_time:
                 opto_intensity = 0
             else:
-                opto_intensity, time_ms = self.pi_controller.process(
-                    firing_rate, sample_time_ms, sample_time_ms=sample_time_ms
+                opto_intensity, self.int_error = cleo.ioproc.pi_ctrl(
+                    measurement=firing_rate_Hz,
+                    reference=target_firing_rate,  # should implicitly be in Hz
+                    integ_error=self.int_error,
+                    dt=self.sample_period,
+                    Kp=self.Kp,
+                    Ki=self.Ki,
                 )
-                if opto_intensity < 0 :  # limit to positive current
+
+                if opto_intensity < 0:  # limit to positive current
                     opto_intensity = 0
             # time_ms at the end reflects the delays added by each block
 
             opto_history.append(opto_intensity)
-            return ({fiber.name:opto_intensity}, sample_time_ms)
+            return ({fiber.name: opto_intensity * mwatt / mm2}, t_samp + self.delay)
 
+        def reset(self):
+             self.int_error = 0
 
     sim.set_io_processor(FeedbackOpto())
 
@@ -1241,7 +1286,7 @@ def run_network(params,target_firing_rate,_run):
         'SOM3rate' : SOM3.smooth_rate(window='flat', width=0.5*ms),
         'SOM4rate' : SOM4.smooth_rate(window='flat', width=0.5*ms),
         'PVrate' : PVmon.smooth_rate(window='flat', width=0.5*ms),
-        'spike_indice_times' : spikes.t_ms,
+        'spike_indice_times' : spikes.t / ms,
         'spike_indices' : spikes.i,
         'spike_times' : spike_t,
         'spike_values' : spike_vals,

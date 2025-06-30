@@ -26,7 +26,10 @@ class ExperimentReader(object):
 
     @property
     def _files_in_rundir(self):
-        return glob.glob('{}/*'.format(self._run_dir))
+        items = glob.glob('{}/*'.format(self._run_dir))
+        # filter out files that are not directories
+        items = [item for item in items if os.path.isdir(item)]
+        return items
     
     def get_all_experiment_runs(self):
         # WARNING: this assumes that experiment do not start with _ 
@@ -40,6 +43,14 @@ class ExperimentReader(object):
                                     'config' : self.get_experiment_config(exp_id)}#,
                                     #'info' : self.get_experiment_info(exp_id) }
         return results
+
+    @property
+    def get_latest_exp_id(self):
+        # returns the latest experiment id, i.e. the highest number in the run_dir
+        exp_ids = [int(os.path.basename(fname)) for fname in self._files_in_rundir if os.path.basename(fname).isdigit()]
+        if len(exp_ids) == 0:
+            return None
+        return str(max(exp_ids))
 
     def get_experiment_config(self, exp_id):
         with open(os.path.join(self._run_dir, str(exp_id), 'config.json')) as f:
@@ -91,6 +102,8 @@ class ExperimentReader(object):
             elif extension in {'.json'}:
                 with open(fname) as f:
                     results[bname] = self._load_json(f)
+            elif extension == '.png':
+                continue
             else:
                 raise ValueError("I have no clue how to load file {} with extension {}".format(fname, extension))
         return results

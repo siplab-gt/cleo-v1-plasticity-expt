@@ -4,6 +4,8 @@
 Created on Tue Mar 14 17:46:19 2017
 
 @author: kwilmes
+
+Modified by Nathan Cruzado and Kyle Johnsen 2022-2025
 """
 import sys
 import matplotlib.pyplot as plt
@@ -11,8 +13,12 @@ from matplotlib import gridspec
 from matplotlib import rcParams
 from scipy import stats
 import matplotlib.cm as cmaps
+import brian2.only as b2
+
+
 from analyse_experiment import *
 #import colormaps as cmaps
+from Spiking_model_cleo import Struct
 
 
 interval = .54
@@ -105,7 +111,7 @@ def plot_responsechangehistogram(tunings_initial,tunings_final, N_neurons,N_pop,
 
     if save is not None:
         plt.tight_layout()
-        plt.savefig('%s/barplot%s.pdf'%(save,name), bbox_extra_artists=(lgd,), bbox_inches='tight') 
+        plt.savefig('%s/barplot%s.pdf'%(save,name), bbox_inches='tight') 
 
 def plot_SOMswitch(tunings_initial,tunings_final, N_neurons,N_pop,save=None,name = ''):
     groupsize = N_neurons/N_pop
@@ -341,7 +347,7 @@ def rasterplots(neuront, neuroni, timeframe,start,end, name):
     a1.tick_params(axis='both', which='both', length=0)
     a1.axvspan(start,end, facecolor='.8',lw=0.0, alpha=0.5)
 
-    plt.savefig('%s/%s/%s/%srasterplot%d.pdf'%(savepath,dataname,run_no,name,timeframe),rasterized=True)#, bbox_extra_artists=(lgd,), bbox_inches='tight') 
+    plt.savefig('%s/%s/%s/%srasterplot%d.pdf'%(savepath,dataname,run_no,name,timeframe))#, bbox_extra_artists=(lgd,), bbox_inches='tight') 
 
 
 def firing_rates(neuront, neuroni, time, rates, name):    
@@ -509,26 +515,27 @@ def plot_spiking_model(dataname):
     reader = ExperimentReader('./%s'%dataname)
     # load all runs at once
     runs = reader.get_all_experiment_runs()
-    run_nos = np.arange(1,2).astype(str) # TD removed, BCM type PYR-VIP 
+    run_nos = [reader.get_latest_exp_id] # TD removed, BCM type PYR-VIP 
     # look at the config for run 1
-    no_stimuli = runs[run_nos[0]]['config']['params']['N4']
-    N_pyr = runs[run_nos[0]]['config']['params']['NPYR']
+    p = Struct(**runs[run_nos[0]]['config']['params'])
+    no_stimuli = p.N4
+    N_pyr = p.NPYR
     N_pop = 4
-    N_sst = runs[run_nos[0]]['config']['params']['NSOM']
-    N_pv = runs[run_nos[0]]['config']['params']['NPV']
-    N_vip = runs[run_nos[0]]['config']['params']['NVIP']
-    seed = runs[run_nos[0]]['config']['params']['seed']
-    nonplasticwarmup = runs[run_nos[0]]['config']['params']['nonplasticwarmup_simtime']['py/reduce'][1]['py/tuple'][0]['values']
-    plasticwarmup = runs[run_nos[0]]['config']['params']['warmup_simtime']['py/reduce'][1]['py/tuple'][0]['values']
-    rewardsimtime = runs[run_nos[0]]['config']['params']['reward_simtime']['py/reduce'][1]['py/tuple'][0]['values']
-    norewardsimtime = runs[run_nos[0]]['config']['params']['noreward_simtime']['py/reduce'][1]['py/tuple'][0]['values']
-    noSSTPVsimtime = runs[run_nos[0]]['config']['params']['noSSTPV_simtime']['py/reduce'][1]['py/tuple'][0]['values']
+    N_sst = p.NSOM
+    N_pv = p.NPV
+    N_vip = p.NVIP
+    seed = p.seed
+    nonplasticwarmup = p.nonplasticwarmup_simtime / b2.second
+    plasticwarmup = p.warmup_simtime / b2.second
+    rewardsimtime = p.reward_simtime / b2.second
+    norewardsimtime = p.noreward_simtime / b2.second
+    noSSTPVsimtime = p.noSSTPV_simtime / b2.second
+    input_time = p.input_time / b2.second
 
-    gmax = runs[run_nos[0]]['config']['params']['gmax']['py/reduce'][1]['py/tuple'][0]['values']*siemens
-
-    input_time = runs[run_nos[0]]['config']['params']['input_time']['py/reduce'][1]['py/tuple'][0]['values']
     warmup = nonplasticwarmup + plasticwarmup
-    total = warmup+rewardsimtime+norewardsimtime+nonplasticwarmup+noSSTPVsimtime
+    total = warmup + rewardsimtime + norewardsimtime + nonplasticwarmup + noSSTPVsimtime
+
+    gmax = p.gmax
 
     t = np.arange(.0,135.3,.0001)*second
     
@@ -595,14 +602,14 @@ def plot_spiking_model(dataname):
     checker = None
     
     for i, run_no in enumerate(run_nos):
+        print('loading run %s'%run_no)
         all_data = reader.try_loading_artifacts(run_no)
         # get parameter
         config = runs[run_no]['config']
 
-        dep_param[i] = runs[run_no]['config']['params'][varied_param]#['py/reduce'][1]['py/tuple'][0]['values']
-        dep_param2[i] = runs[run_no]['config']['params'][varied_param2]['py/reduce'][1]['py/tuple'][0]['values']
+        dep_param[i] = getattr(p, varied_param)
+        dep_param2[i] = getattr(p, varied_param2)
         
-
         results = all_data['results.pkl']
   
 
@@ -923,10 +930,19 @@ def plot_spiking_model(dataname):
         plt.tight_layout()
 
         
-        plt.savefig('%s/%s/%s/2ndbigfigure.pdf'%(savepath,dataname,run_no), bbox_extra_artists=(lgd,), bbox_inches='tight',format='pdf', transparent=True) 
+        plt.savefig('%s/%s/%s/2ndbigfigure.pdf'%(savepath,dataname,run_no), bbox_extra_artists=(lgd,), bbox_inches='tight',format='pdf', transparent=True)
 
-        for timeframe in [nonplasticwarmup,warmup+nonplasticwarmup+interval,warmup+rewardsimtime+halfinterval,warmup+rewardsimtime+interval,60.06,warmup+rewardsimtime-interval-interval,90.86,114.8,total+rewardsimtime-nonplasticwarmup]:
-
+        for timeframe in [
+            nonplasticwarmup,
+            warmup + nonplasticwarmup + interval,
+            warmup + rewardsimtime + halfinterval,
+            warmup + rewardsimtime + interval,
+            60.06,
+            warmup + rewardsimtime - interval - interval,
+            90.86,
+            114.8,
+            total + rewardsimtime - nonplasticwarmup,
+        ]:
             
             f, (a1, a2, a3) = plt.subplots(3, sharex=True, figsize = (5,6))
             a1.plot(PYRt[PYRi<100]/second, PYRi[PYRi<100], '.', color = cmaps.viridis(0.0), ms=2.0)
@@ -961,7 +977,13 @@ def plot_spiking_model(dataname):
                 xlabel('time [seconds]')
                 ylabel('neuron index')
 
-            a3.set_xticks(np.arange(timeframe-interval,timeframe+input_time-.01,input_time))
+            a3.set_xticks(
+                np.arange(
+                    timeframe - interval,
+                    timeframe + input_time - 0.01,
+                    input_time,
+                )
+            )
             a3.set_title('SST')
 
             for a in [a1, a2, a3]:
@@ -972,7 +994,7 @@ def plot_spiking_model(dataname):
                 a.tick_params(axis='both', which='both', length=0)
                 a.axvspan((nonplasticwarmup+plasticwarmup),(nonplasticwarmup+plasticwarmup+rewardsimtime), facecolor='.8',lw=0.0, alpha=0.5)
 
-            plt.savefig('%s/%s/%s/bigrasterplot%s.pdf'%(savepath,dataname,run_no,timeframe),rasterized=True)
+            plt.savefig('%s/%s/%s/bigrasterplot%s.pdf'%(savepath,dataname,run_no,timeframe))
             
         if plastic == True:
             fig, ((a1,a3),(a2,a4),(a6, a5)) = plt.subplots(3,2,figsize=(6.3,8), gridspec_kw = {'width_ratios':[1.2, 1]})
@@ -1226,8 +1248,17 @@ def plot_spiking_model(dataname):
 
         axa1.set_xlabel('time [seconds]')
         axa1.set_ylabel('excitatory weights [nS]')
-        axa1.set_xlim((nonplasticwarmup+plasticwarmup+rewardsimtime)*10,total*10)
-        axa1.set_xticks(np.arange((nonplasticwarmup+plasticwarmup+rewardsimtime+2.1)*10,total*10,100))
+        axa1.set_xlim(
+            (nonplasticwarmup + plasticwarmup + rewardsimtime) * 10, total * 10
+        )
+        axa1.set_xticks(
+            np.arange(
+                (nonplasticwarmup + plasticwarmup + rewardsimtime + 2.1)
+                * 10,
+                total * 10,
+                100,
+            )
+        )
         axa1.set_xticklabels(np.arange(70,int(total),10))
 
         

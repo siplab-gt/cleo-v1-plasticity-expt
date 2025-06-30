@@ -16,15 +16,14 @@ mamba activate wcm
 *(wcm refers to Wilmes-Clopath Model)*
 
 ## Usage
-To replicate results in the paper, do all the following (all from repository root as the working directory):
+To replicate results in the paper, simply run [Task](https://taskfile.dev):
 
-1. Run the simulation for all target firing rates and no stimulation:
-    ```bash
-    python run_cleo_sweep.py
-    ```
-2. Generate composite figures
-    ```bash
-    python plot_parameter_sweep.py
-    ```
+```
+task
+```
+
+While Task will orchestrate needed runs to form plots, it unfortunately does not detect when a *repeated* task needs to be rerun when they share a source (in this case the source code `Spiking_model_cleo.py`).
+So if you change that file and need to rerun everything, you'll need to delete the previous results for Task to handle it intelligently.
+[Snakemake](https://snakemake.github.io/) would be the better choice in the future.
 
 *This code has not been thoroughly tested, so please report any issues you encounter.*
