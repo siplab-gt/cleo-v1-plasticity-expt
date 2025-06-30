@@ -102,6 +102,8 @@ class ExperimentReader(object):
             elif extension in {'.json'}:
                 with open(fname) as f:
                     results[bname] = self._load_json(f)
+            elif extension == '.png':
+                continue
             else:
                 raise ValueError("I have no clue how to load file {} with extension {}".format(fname, extension))
         return results

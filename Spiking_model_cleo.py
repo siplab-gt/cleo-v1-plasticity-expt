@@ -1,11 +1,11 @@
-#!/usr/bin/env python2
-# -*- coding: utf-8 -*-
 """
 L2/3: PCs, PVs, SOMs and VIPs receive L4 bottom-up and top-down input
 
 Created on Mon Mar  6 14:12:15 2017
 
 @author: kwilmes
+
+Modifed by Nathanael Cruzado and Kyle Johnsen, 2022-2025
 """
 #import msilib
 import os
@@ -14,6 +14,8 @@ import shutil
 from tempfile import mkdtemp
 
 import brian2.only as b2
+import cleo.coords
+import cleo.utilities
 import numpy as np
 from brian2 import *
 from brian2tools import *
@@ -88,7 +90,7 @@ def config():
     params = {
         # simulation parameters
         'plot': False, 				# enables plotting during the run
-        'seed' : 7472, 				# random seed       
+        'seed' : 1805, 				# random seed       
         'nonplasticwarmup_simtime_second_' : 1.4,# no plasticity, to measure tuning
         'warmup_simtime_second_' : 42,# 42*second, 		# plasticity, no reward
         'reward_simtime_second_' : 24.5,# 24.5*second, 	# plasticity, with reward
@@ -214,6 +216,7 @@ def run_network(params,target_firing_rate,codegen_target,_run):
     stim_time = p.stim_time    
     input_time = p.input_time
     seed(p.seed)
+    cleo.utilities.set_seed(p.seed)
     
     # neurons
     N4 = p.N4
@@ -305,9 +308,6 @@ def run_network(params,target_firing_rate,codegen_target,_run):
     dIspikelet/dt = -Ispikelet/tau_spikelet : amp
     dg_ampa/dt = -g_ampa/tau_ampa : siemens
     dg_gaba/dt = -g_gaba/tau_gaba : siemens
-    x : meter
-    y : meter
-    z : meter
     '''
     
     # Excitatory synapses
@@ -336,17 +336,46 @@ def run_network(params,target_firing_rate,codegen_target,_run):
  
 
     # define neurons
-    exc_neurons = NeuronGroup(p.NPYR, model=eqs_neurons, threshold='v > vt',
-                          reset='v=el', refractory=2*ms, method='euler')
+    exc_neurons = NeuronGroup(
+        p.NPYR,
+        model=eqs_neurons,
+        threshold="v > vt",
+        reset="v=el",
+        refractory=2 * ms,
+        method="euler",
+    )
 
-    inh_neurons = NeuronGroup(p.NSOM+p.NVIP+p.NPV, model=eqs_neurons, threshold='v > vt',
-                          reset='v=el', refractory=2*ms, method='euler')    
-    inh_neurons.x=np.random.uniform(-.2,.2, p.NSOM+p.NVIP+p.NPV)*mmeter
-    inh_neurons.y=np.random.uniform(-.2,.2, p.NSOM+p.NVIP+p.NPV)*mmeter
-    inh_neurons.z=np.random.uniform(.4,.6,p.NSOM+p.NVIP+p.NPV)*mmeter
-    exc_neurons.x=np.random.uniform(-.2,.2, p.NPYR)*mmeter
-    exc_neurons.y=np.random.uniform(-.2,.2, p.NPYR)*mmeter
-    exc_neurons.z=np.random.uniform(.4,.6, p.NPYR)*mmeter
+    inh_neurons = NeuronGroup(
+        p.NSOM + p.NVIP + p.NPV,
+        model=eqs_neurons,
+        threshold="v > vt",
+        reset="v=el",
+        refractory=2 * ms,
+        method="euler",
+    )
+    # get realistic size given density of L2/3
+    n_l23 = exc_neurons.N + inh_neurons.N
+    zlim_l23 = (100, 300) * um
+    thickness_l23 = zlim_l23[1] - zlim_l23[0]
+    density_mouse_v1 = 155426 / b2.mm3  # Herculano-Houzel 2013
+    l23_volume = n_l23 / density_mouse_v1
+    l23_area = l23_volume / thickness_l23
+    l23_radius = np.sqrt(l23_area / np.pi)
+    print('L2/3 radius:', l23_radius)
+
+    zlim_mm = zlim_l23 / b2.mm
+    cleo.coords.assign_coords_rand_cylinder(
+        exc_neurons,
+        [0, 0, zlim_mm[0]],
+        [0, 0, zlim_mm[1]],
+        l23_radius / b2.mm,
+    )
+    cleo.coords.assign_coords_rand_cylinder(
+        inh_neurons,
+        [0, 0, zlim_mm[0]],
+        [0, 0, zlim_mm[1]],
+        l23_radius / b2.mm,
+    )
 
     PYR = exc_neurons[:p.NPYR]
     SOM = inh_neurons[:p.NSOM]
@@ -723,17 +752,22 @@ def run_network(params,target_firing_rate,codegen_target,_run):
     #assign_coords_rand_rect_prism(inh_neurons, xlim=(-0.4, 0.4), ylim=(-0.4, 0.4), zlim=(0.4, 0.6))
 
     net=Network(collect())
+    n_synapses = 0
+    for obj in net.objects:
+        if isinstance(obj, Synapses):
+            n_synapses += obj.N
+    print('Total # synapses:', n_synapses)
 
     # 105 μm matches 50% at 50 μm like before
-    mua = cleo.ephys.MultiUnitActivity(r_noise_floor=105 * um)
-    spikes = cleo.ephys.SortedSpiking(name='spikes', r_noise_floor=mua.r_noise_floor)
-    probe = cleo.ephys.Probe(coords=[0, 0, .5] * mm)
-    probe.add_signals(mua, spikes)
+    spikes = cleo.ephys.MultiUnitActivity(name="spikes", r_noise_floor=105 * um)
+    # record in the middle of L2/3
+    probe = cleo.ephys.Probe(coords=[0, 0, np.average(zlim_mm)] * mm, signals=[spikes])
 
     sim=cleo.CLSimulator(net)
     opsin = cleo.opto.chr2_4s()
+    # stim at the top of L2/3
     fiber = cleo.light.Light(
-        coords=(0, 0, .4) * mm,
+        coords=(0, 0, zlim_mm[0]) * mm,
         light_model=cleo.light.fiber473nm(),
         name="fiber",
     )
@@ -741,6 +775,16 @@ def run_network(params,target_firing_rate,codegen_target,_run):
         sim.inject(opsin, PV, Iopto_var_name='Iopto')
     sim.inject(fiber, PV)
     sim.inject(probe, inh_neurons)
+
+    with TmpExpDir(base_dir="./") as exp_dir:
+        # lets create a filename for storing some data        
+        plot_file = os.path.join(exp_dir, "cleo_setup.png")
+        # add the result as an artifact, note that the name here is important
+        # as sacred otherwise will try to save to the oddly named tmp subdirectory we created
+        fig, ax = cleo.viz.plot(exc_neurons, inh_neurons, sim=sim)
+        fig.savefig(plot_file)
+        ex.add_artifact(plot_file, name=os.path.basename(plot_file))
+        print('saved Cleo setup plot')
 
 
     #def stimulus(time_ms):

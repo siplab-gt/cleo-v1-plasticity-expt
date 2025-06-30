@@ -1,11 +1,13 @@
 version: '3'
 
 vars:
-  FIRING_RATES_SD: [0, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]
+  # FIRING_RATES_SD: [0, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.25, 2.5, 2.75, 3]
+  FIRING_RATES_SD: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
   PARAM_OVERRIDES: '{{.PARAM_OVERRIDES | default ""}}'
+  INDEX_LAST_FR_SD: '{{(sub (len .FIRING_RATES_SD) 1)}}'
+  MAX_FR_SD: '{{index .FIRING_RATES_SD (atoi .INDEX_LAST_FR_SD)}}'
 
 tasks:
-
   default:
     desc: Run all experiments and plot the results
     deps:
@@ -24,18 +26,58 @@ tasks:
 
   plot:
     desc: Plot the results of the experiments
+    deps:
+      - task: extract_all_minimal_data
+      - task: plot_weights_over_time
     sources:
       - plot_parameter_sweep.py
       - results/base_mean_sd.txt
-      - results/Spiking_model_baseline/results.pkl
+      - results/Spiking_model_baseline/minimal_data.npz
       - for: { var: FIRING_RATES_SD, as: FR_SD }
-        file: results/Spiking_model_PIcontrol_PV_rt_tSD_{{.FR_SD}}/results.pkl
+        file: results/Spiking_model_PIcontrol_PV_rt_tSD_{{.FR_SD}}/minimal_data.npz
     generates:
       - results/*.svg
       - results/*.png
       - results/*.pdf
     cmds:
       - python plot_parameter_sweep.py '{{.FIRING_RATES_SD | join ","}}'
+
+  plot_weights_over_time:
+    sources:
+      - plot_weights_over_time.py
+      - results/Spiking_model_baseline/results.pkl
+      - results/Spiking_model_PIcontrol_PV_rt_tSD_{{.MAX_FR_SD}}/results.pkl
+    generates:
+      - results/weights_over_time.svg
+    cmds:
+      - python plot_weights_over_time.py results/Spiking_model_baseline results/Spiking_model_PIcontrol_PV_rt_tSD_{{.MAX_FR_SD}}
+
+  extract_all_minimal_data:
+    sources:
+      - for: { var: FIRING_RATES_SD, as: FR_SD }
+        file: results/Spiking_model_PIcontrol_PV_rt_tSD_{{.FR_SD}}/results.pkl
+      - results/Spiking_model_baseline/results.pkl
+    generates:
+      - for: { var: FIRING_RATES_SD, as: FR_SD }
+        file: results/Spiking_model_PIcontrol_PV_rt_tSD_{{.FR_SD}}/minimal_data.pkl
+      - results/Spiking_model_baseline/minimal_data.npz
+    deps:
+      - for: { var: FIRING_RATES_SD, as: FR_SD }
+        task: extract_minimal_data
+        vars:
+          OUTDIR: results/Spiking_model_PIcontrol_PV_rt_tSD_{{.FR_SD}}
+      - task: extract_minimal_data
+        vars:
+          OUTDIR: results/Spiking_model_baseline
+
+  extract_minimal_data:
+    internal: true
+    sources:
+      - "{{.OUTDIR}}/results.pkl"
+    generates:
+      - "{{.OUTDIR}}/minimal_data.npz"
+    cmds:
+      - python extract_minimal_data.py {{.OUTDIR}}
 
   run_all:
     desc: Run baseline then control experiments in parallel
@@ -58,8 +100,7 @@ tasks:
           PARAM_OVERRIDES: '{{.PARAM_OVERRIDES}}'
 
   get_targets_from_baseline:
-    internal: true
-    desc: Get the mean and standard deviation of the base firing rate
+    desc: Get the mean and standard deviation of the base firing rate (store in results/base_mean_sd.txt)
     deps:
       - task: run
         vars:
@@ -72,7 +113,7 @@ tasks:
     generates:
       - results/base_mean_sd.txt
     cmds:
-      - python get_targets_from_baseline.py  results/Spiking_model_baseline/results.pkl
+      - python get_targets_from_baseline.py results/Spiking_model_baseline/results.pkl
 
   run:
     desc: Run a single experiment for a target firing rate
@@ -89,16 +130,10 @@ tasks:
 
 
   run_ctrl:
-    internal: true
     vars:
       FIRING_RATE:
         sh: python firing_rate_sd_to_hz.py {{.FR_SD}}
       OUTDIR: results/Spiking_model_PIcontrol_PV_rt_tSD_{{.FR_SD}}
-    sources:
-      - results/base_mean.txt
-      - results/base_sd.txt
-    generates:
-      - "{{.OUTDIR}}/results.pkl"
     cmds:
       - task: run
         vars:
@@ -113,12 +148,15 @@ tasks:
       - plot_essentials.py
       - plot_Spikingmodel_stripped.py
       - '{{.OUTDIR}}/results.pkl'
+    generates:
+      - "{{.OUTDIR}}/2ndbigfigure.pdf"
     cmds:
       - python plot_Spikingmodel_stripped.py {{.OUTDIR}}
       - python plot_essentials.py {{.OUTDIR}}
 
 
   plot_all_exps:
+    desc: Produce detailed plots of all experiments (assuming they've already run)
     deps:
       - for: { var: FIRING_RATES_SD, as: FR_SD }
         task: plot_exp
